@@ -1,10 +1,3 @@
-#!/usr/bin/python3
-# -*- coding: utf-8 -*-
-# @Time     :   6/24/2019 9:03 PM
-# @Author   :   Luspock
-# @File     :   fingerprint.py
-
-
 import ctypes
 from ctypes import wintypes
 
@@ -79,6 +72,8 @@ class FingerPrint:
     def __init__(self):
         self.session_handle = ctypes.c_uint32()
         self.unit_id = ctypes.c_uint32()
+        
+        self.print_data = False
 
         # important  represent which finger you are using
         # full definition is in winbio_types.h
@@ -99,16 +94,17 @@ class FingerPrint:
                                     None,
                                     ctypes.byref(self.session_handle))  # pool   system
         if ret & 0xffffffff != 0x0:
-            print("Open Failed!")
+            print("\n\nOPEN FAILED !!!\n\n")
             return False
         self.IsOpen = True
         return True
 
     def locate_unit(self):
         ret = lib.WinBioLocateSensor(self.session_handle, ctypes.byref(self.unit_id))
-        print(self.unit_id)
+        if self.print_data:
+            print("\n", self.unit_id, ",")
         if ret & 0xffffffff != 0x0:
-            print("Locate Failed!")
+            print("\n\nLOCATE FAILED !!!\n")
             return False
         return True
 
@@ -118,14 +114,31 @@ class FingerPrint:
                                  ctypes.byref(self.subfactor),
                                  ctypes.byref(reject_detail))
         if ret & 0xffffffff != 0x0:
-            print(hex(ret & 0xffffffff))
-            raise Exception("Identify Error")
-        print(f"Unit ID\t:{hex(self.unit_id.value)}")
-        print(f"Sub Factor\t:{hex(self.subfactor.value)}")
-        print(f"Identity Type\t: {self.identity.Type}")
-        print(f"Identity AccountSid Data\t: {list(self.identity.Value.AccountSid.Data)[0:self.identity.Value.AccountSid.Size]}")
-        print(f"Identity AccountSid Size\t: {self.identity.Value.AccountSid.Size}")
-        print(f"Rejected Details:\t{hex(reject_detail.value)}")
+            if self.print_data:
+                print("\n", hex(ret & 0xffffffff), "\n")
+            raise Exception("Identify Error - During Identification")
+        
+        unit_id = hex(self.unit_id.value)
+        sub_factor = hex(self.subfactor.value)
+        identity_type = self.identity.Type
+        identity_account_sid_data = list(self.identity.Value.AccountSid.Data)[0:self.identity.Value.AccountSid.Size]
+        identity_account_sid_size = self.identity.Value.AccountSid.Size
+        rejected_details = hex(reject_detail.value)
+
+        data = {
+            f"Unit ID: {unit_id}",
+            f"Sub Factor: {sub_factor}",
+            f"Identity Type: {identity_type}",
+            f"Identity Account Sid Data : {identity_account_sid_data}",
+            f"Identity Account Sid Size : {identity_account_sid_size}",
+            f"Rejected Details: {rejected_details}"
+
+        }
+        
+        if self.print_data:
+            print("\n\n", data, "\n\n")
+
+        return data
 
     def verify(self):
         match = ctypes.c_bool(0)
@@ -135,11 +148,16 @@ class FingerPrint:
         ret = lib.WinBioVerify(self.session_handle, ctypes.byref(self.identity),
                                self.subfactor, ctypes.byref(self.subfactor),
                                ctypes.byref(match), ctypes.byref(reject_detail))
+
+        if self.print_data:
+            print(f"\nVerification Result: {match.value}, Reject Detail: {hex(reject_detail.value)}")
+
         if ret & 0xffffffff == WINBIO_E_NO_MATCH or ret & 0xffffffff == 0:
             return match.value
         else:
-            print(hex(ret & 0xffffffff))
-            raise Exception("Identify Error")
+            if self.print_data:
+                print("\n", hex(ret & 0xffffffff), "\n")
+            raise Exception("Identify Error - During Verification")
 
     def close(self):
         if not self.IsOpen:
@@ -220,17 +238,3 @@ class FingerPrint:
                 )
         self.identity.Type = WINBIO_ID_TYPE_SID
         self.identity.Value.AccountSid.Size = GetLengthSid(token_user.User.Sid)
-
-
-if __name__ == '__main__':
-    myFP = FingerPrint()
-    try:
-        myFP.open()
-        # myFP.identify()
-        print("Please touch the fingerprint sensor")
-        if myFP.verify():
-            print("Hello! Master")
-        else:
-            print("Sorry! Man")
-    finally:
-        myFP.close()
